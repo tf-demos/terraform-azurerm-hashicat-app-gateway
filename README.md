@@ -14,3 +14,6 @@ The App Gateway portion for a demo featuring the Hashicat app.
 ## Resources created:
 - Public IP of the Hashicat app.
 - Application Gateway to enable user traffic to the app.
+- WAF policy for the Application Gateway.
+- Example of a profile in FrontDoor.
+- WAF policy associated to the FrontDoor profile (based on a module from the public registry).
