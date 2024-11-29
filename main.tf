@@ -36,10 +36,13 @@ resource "azurerm_application_gateway" "network" {
   name                = "${var.prefix}-appgateway"
   resource_group_name = var.resource_group_name
   location            = var.location
+  #Associate with the WAF defined below
+  firewall_policy_id  = azurerm_web_application_firewall_policy.example.id
+  depends_on = [ azurerm_web_application_firewall_policy.example ]
 
   sku {
-    name     = "Basic"
-    tier     = "Basic"
+    name     = "WAF_v2"
+    tier     = "WAF_v2"
     capacity = 2
   }
 
@@ -87,4 +90,103 @@ resource "azurerm_application_gateway" "network" {
     backend_address_pool_name  = local.backend_address_pool_name
     backend_http_settings_name = local.http_setting_name
   }
+}
+
+#########################
+#    AppGW WAF policy   #
+#########################
+resource "azurerm_web_application_firewall_policy" "example" {
+  name                = "${var.prefix}-wafpolicy1"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+
+  custom_rules {
+    name      = "BlockRule2"
+    priority  = 2
+    rule_type = "MatchRule"
+
+    match_conditions {
+      match_variables {
+        variable_name = "QueryString"
+      }
+
+      operator           = "Contains"
+      match_values       = ["promo"]
+    }
+    action = "Block"
+  }
+
+  managed_rules {
+
+    managed_rule_set {
+      type    = "OWASP"
+      version = "3.2"
+      rule_group_override {
+        rule_group_name = "REQUEST-920-PROTOCOL-ENFORCEMENT"
+
+        rule {
+          id      = "920440"
+          enabled = true
+          action  = "Block"
+        }
+      }
+    }
+  }
+}
+
+# front door profile
+resource "azurerm_cdn_frontdoor_profile" "demo-frontdoor" {
+  name                = "${var.prefix}-cdn-profile"
+  resource_group_name = var.resource_group_name
+  sku_name            = "Standard_AzureFrontDoor"
+
+  tags = {
+    environment = "Production"
+  }
+}
+
+#########################
+# Front door WAF policy #
+#########################
+# This is a module in the public registry
+# Check: https://registry.terraform.io/modules/Azure/avm-res-network-frontdoorwebapplicationfirewallpolicy/azurerm/latest
+
+# Instantiate the WAF Policy Module
+module "frontdoor_waf_policy" {
+  source  = "Azure/avm-res-network-frontdoorwebapplicationfirewallpolicy/azurerm"
+  version = "0.1.0"
+
+  name                = "${var.prefix}0mywafpolicy"
+  resource_group_name = var.resource_group_name
+  mode                = "Prevention"
+  sku_name            = "Premium_AzureFrontDoor"
+
+  request_body_check_enabled        = true
+  redirect_url                      = "https://www.hashicorp.com/"
+  custom_block_response_status_code = 405
+  custom_block_response_body        = base64encode("Blocked by WAF")
+
+  custom_rules = [
+    #custom rule 1
+    {
+      name     = "BlockRule1"
+      priority = 1
+      type     = "MatchRule"
+      action   = "Redirect"
+      match_conditions  = [{
+        match_variable = "QueryString"
+        operator       = "Contains"
+        match_values   = ["promo"]
+        }
+      ]
+    },
+  ]
+  managed_rules = [
+    #Managed Rule example - Microsoft_BotManagerRuleSet
+    {
+      action  = "Block"
+      type    = "Microsoft_BotManagerRuleSet"
+      version = "1.1"
+    }
+  ]
 }
