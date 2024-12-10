@@ -116,6 +116,11 @@ resource "azurerm_web_application_firewall_policy" "example" {
     action = "Block"
   }
 
+  policy_settings {
+    enabled                     = true
+    mode                        = "Prevention"
+  }
+
   managed_rules {
 
     managed_rule_set {
